@@ -1371,5 +1371,9 @@
   },
   "pluginSettings": {
     "loadError": "Settings panel load failed: {message}"
+  },
+  "iconPanel": {
+    "noTabs": "Go to Settings → Icon Panel to create your first category",
+    "emptyTab": "This category is empty — drag a program in, or add one in Settings"
   }
 }

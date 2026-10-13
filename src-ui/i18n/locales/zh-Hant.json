@@ -1371,5 +1371,9 @@
   },
   "pluginSettings": {
     "loadError": "設定面板載入失敗: {message}"
+  },
+  "iconPanel": {
+    "noTabs": "前往設定 → 圖示面板 建立第一個分類",
+    "emptyTab": "這裡是空的，拖個程式進來或到設定裡新增"
   }
 }

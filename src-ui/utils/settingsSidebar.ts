@@ -28,6 +28,7 @@ export function buildSidebarItems(
       c.componentId !== 'bias-config' &&
       c.componentId !== 'appearance-config' &&
               c.componentId !== 'icon-override-config' &&
+      c.componentId !== 'icon-panel-config' &&
         c.componentId !== 'model-openai-config' &&
         c.componentId !== 'model-ollama-config',
   ).sort(sortByPriority)

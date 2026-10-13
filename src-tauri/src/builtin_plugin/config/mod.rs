@@ -5,6 +5,7 @@ pub mod candidate_registry_config;
 pub mod general_config;
 pub mod hotkey_config;
 pub mod icon_override_config;
+pub mod icon_panel_config;
 pub mod installation_monitor_config;
 pub mod model_ollama_config;
 pub mod model_openai_config;

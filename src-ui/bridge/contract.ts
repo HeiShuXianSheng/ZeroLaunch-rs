@@ -401,3 +401,54 @@ export interface ScoreDetail {
  * 由 `i18n_get_plugin_translations` 下发，前端以 vue-i18n 命名空间方式合并。
  */
 export type PluginTranslationCatalog = Record<string, Record<string, unknown>>
+
+// ─── 图标面板（icon-panel-config 组件的 settings 形状，snake_case 键）───
+
+/** 面板条目的启动动作，与后端 `PanelLaunchAction` 同词表（snake_case）。 */
+export type PanelLaunchAction = 'open' | 'open_folder' | 'run_as_admin'
+
+/**
+ * 面板条目的启动目标，与后端 `PanelTarget` 同词表（内部标签 `kind`）。
+ * 各变体的载荷字段随 kind 变化，见后端 `icon_panel_config::PanelTarget`。
+ */
+export type PanelTarget =
+  | { kind: 'path'; path: string }
+  | { kind: 'url'; url: string }
+  | { kind: 'app'; app_id: string }
+  | { kind: 'command'; program: string; args: string[]; run_as_admin: boolean }
+  | { kind: 'builtin'; action_id: string }
+
+/** 图标请求（后端 `IconRequest`，标签联合），存请求不存图片。 */
+export interface PanelIconRequest {
+  type: 'path' | 'url' | 'extension' | 'data'
+  value: string
+}
+
+/** 面板条目 —— 图标网格中的一个可点击格子。 */
+export interface PanelEntry {
+  id: string
+  title: string
+  target: PanelTarget
+  icon: PanelIconRequest
+  /** 用户自选图标文件路径；null 表示用 icon 推导的图标。 */
+  icon_override_path: string | null
+}
+
+/** 面板分类 —— 一个 tab 及其条目。 */
+export interface PanelTab {
+  id: string
+  name: string
+  entries: PanelEntry[]
+}
+
+/** `icon-panel-config` 组件的 settings 形状。 */
+export interface IconPanelSettings {
+  /** 空查询时是否显示图标面板。 */
+  enabled: boolean
+  tabs: PanelTab[]
+}
+
+/** `panel_get_icons` 的返回：条目 id → 图标 data URL（无图标时为空字符串）。 */
+export interface PanelIconsResponse {
+  icons: Record<string, string>
+}

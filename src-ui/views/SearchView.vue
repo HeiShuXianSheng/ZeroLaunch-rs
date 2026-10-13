@@ -18,9 +18,12 @@
       <!-- 参数面板模式 -->
       <ParamPanel v-if="uiMode === 'param_panel'" />
 
+      <!-- 图标面板：空查询且面板启用时接管，优先于候选列表（面板启用时 home 候选不生效） -->
+      <IconPanel v-if="panelActive" />
+
       <!-- 搜索结果列表（搜索模式或行内参数模式；主页为 isIdle 空查询会话，额外豁免） -->
       <ResultList
-        v-if="(uiMode === 'search' || uiMode === 'inline_param') && (!searchStore.isIdle || searchStore.isHomeActive)"
+        v-else-if="(uiMode === 'search' || uiMode === 'inline_param') && (!searchStore.isIdle || searchStore.isHomeActive)"
         :results="searchStore.results"
         :selected-index="searchStore.selectedIndex"
         @select="searchStore.selectedIndex = $event"
@@ -37,7 +40,7 @@
       />
 
       <Footer
-        v-if="(!searchStore.isIdle || searchStore.isHomeActive) && searchStore.sessionMode !== 'plugin_immersive'"
+        v-if="!panelActive && (!searchStore.isIdle || searchStore.isHomeActive) && searchStore.sessionMode !== 'plugin_immersive'"
         :result-count="searchStore.results.length"
         :session-mode="searchStore.sessionMode"
         :actions="searchStore.selectedItem?.actions ?? []"
@@ -58,7 +61,7 @@
 </template>
 
 <script setup lang="ts">
-import { provide, ref, nextTick, h } from 'vue'
+import { provide, ref, nextTick, h, computed } from 'vue'
 import { onMounted, onUnmounted } from 'vue'
 import { useNotification, useMessage, NButton } from 'naive-ui'
 import { useI18n } from 'vue-i18n'
@@ -66,11 +69,13 @@ import WindowFrame from '../components/layout/WindowFrame.vue'
 import SearchBar from '../components/search/SearchBar.vue'
 import ResultList from '../components/results/ResultList.vue'
 import PluginPanelHost from '../components/panel/PluginPanelHost.vue'
+import IconPanel from '../components/panel/IconPanel.vue'
 import Footer from '../components/layout/Footer.vue'
 import ContextMenu from '../components/layout/ContextMenu.vue'
 import type { CtxItem } from '../components/layout/ContextMenu.vue'
 
 import { useSearchStore } from '../stores/search-store'
+import { usePanelStore } from '../stores/panel-store'
 import { useKeyboardRouter } from '../composables/useKeyboardRouter'
 import { useWindowResize } from '../composables/useWindowResize'
 import ParamPanel from '../components/search/ParamPanel.vue'
@@ -79,12 +84,23 @@ import { registerErrorHandler, configGetSettings, copyToClipboard } from '../bri
 import type { BridgeError } from '../bridge/commands'
 
 const searchStore = useSearchStore()
+const panelStore = usePanelStore()
 const notification = useNotification()
 const message = useMessage()
 const { t } = useI18n()
 
 const { uiMode } = useKeyboardRouter()
 const { resizeWindow } = useWindowResize()
+
+/** 图标面板接管条件：空查询 + 面板启用 + 未进入其它会话。
+ *  inline_param / param_panel / plugin_* 会话同样把 query 置空（isIdle 为真），
+ *  但它们各有自己的面板，不能被图标面板顶掉。 */
+const panelActive = computed(
+  () =>
+    panelStore.enabled &&
+    searchStore.isIdle &&
+    (uiMode.value === 'none' || uiMode.value === 'search'),
+)
 
 // ---- 集中管理的右键菜单状态 ----
 const ctxVisible = ref(false)
@@ -154,6 +170,7 @@ onMounted(async () => {
 
   searchStore.fetchHomeSetting()
   await loadDragSetting()
+  await panelStore.loadFromBackend()
 
   unlistenConfig = await onConfigChanged((payload) => {
     // DataSource/KeywordOptimizer 变更时刷新候选项
@@ -169,6 +186,10 @@ onMounted(async () => {
       loadDragSetting()
       searchStore.fetchHomeSetting()
     }
+    // 图标面板配置变更（管理页增删改）时重载面板数据与图标
+    if (payload.componentId === 'icon-panel-config') {
+      panelStore.loadFromBackend()
+    }
   })
 
   // 窗口每次被唤出时恢复输入框焦点：隐藏再显示时 DOM 焦点保留在旧元素（如 footer），
@@ -182,8 +203,8 @@ onMounted(async () => {
     })
     // 常驻结果框：空查询会话（无活动插件/参数面板）唤出时加载常用候选项主页。
     // 空查询语义由后端裁决（开关关闭时后端结束会话）；sessionMode 守卫
-    // 保证插件面板等会话唤醒不被覆盖。
-    if (searchStore.query === '' && searchStore.sessionMode === 'none') {
+    // 保证插件面板等会话唤醒不被覆盖。面板启用时面板优先，不再加载 home 候选。
+    if (searchStore.query === '' && searchStore.sessionMode === 'none' && !panelStore.enabled) {
       searchStore.doQuery('')
     }
   })

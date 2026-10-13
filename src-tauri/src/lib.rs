@@ -193,6 +193,9 @@ pub fn run() {
             crate::commands::config_file::config_set_enabled,
             crate::commands::config_file::config_get_actions,
             crate::commands::config_file::config_execute_action,
+            // 图标面板：条目图标批量获取与启动
+            crate::commands::panel::panel_get_icons,
+            crate::commands::panel::panel_launch,
             // 资源管理
             crate::commands::resource::resource_get,
             crate::commands::resource::resource_upload,

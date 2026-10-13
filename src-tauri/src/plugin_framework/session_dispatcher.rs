@@ -1324,21 +1324,42 @@ impl SessionDispatcher {
         }
         // 锁在 await 前已全部释放；插件候选（ExecutionTarget::Plugin）由宿主内置
         // PluginWakeExecutor 处理，统一经本管道。
-        let executor = {
-            let registry = self.executor_registry.read();
-            registry
-                .resolve(&exec_ctx, action_id)
-                .map_err(|e| ConfirmError(e.to_string()))?
-        };
-
-        match executor.execute(&exec_ctx, action_id).await {
-            Ok(()) => {
+        match self.run_executor(&exec_ctx, action_id).await? {
+            Some(fallback_action) => {
+                info!(
+                    "[执行成功] candidate='{}' (id={}), action='{}' (fallback from '{}')",
+                    exec_ctx.display_name, candidate_id, fallback_action, action_id
+                );
+            }
+            None => {
                 info!(
                     "[执行成功] candidate='{}' (id={}), action='{}'",
                     exec_ctx.display_name, candidate_id, action_id
                 );
-                Ok(())
             }
+        }
+        Ok(())
+    }
+
+    /// 解析执行器并执行，含「激活失败 → 按配置回退」逻辑。
+    ///
+    /// 参数：exec_ctx - 已构造的执行上下文；action_id - 动作 ID。
+    /// 返回：`Ok(None)` 为直接执行成功；`Ok(Some(action))` 为经该回退动作执行成功；
+    ///       `Err` 为执行器解析失败或执行失败。上下文构造与日志由调用方负责。
+    async fn run_executor(
+        &self,
+        exec_ctx: &ExecutionContext,
+        action_id: &str,
+    ) -> Result<Option<String>, ConfirmError> {
+        let executor = {
+            let registry = self.executor_registry.read();
+            registry
+                .resolve(exec_ctx, action_id)
+                .map_err(|e| ConfirmError(e.to_string()))?
+        };
+
+        match executor.execute(exec_ctx, action_id).await {
+            Ok(()) => Ok(None),
             Err(ExecutionError::ActivationFailed { fallback_action }) => {
                 // 窗口唤醒失败：按配置决定是否回退执行。
                 let launch_new = self
@@ -1348,31 +1369,66 @@ impl SessionDispatcher {
                     })
                     .and_then(|v| v.as_bool())
                     .unwrap_or(true);
-                if launch_new {
-                    let fallback_executor = {
-                        let registry = self.executor_registry.read();
-                        registry
-                            .resolve_fallback(&exec_ctx, &fallback_action)
-                            .map_err(|e| ConfirmError(e.to_string()))?
-                    };
-                    fallback_executor
-                        .execute(&exec_ctx, &fallback_action)
-                        .await
-                        .map_err(|e| ConfirmError(e.to_string()))?;
+                if !launch_new {
                     info!(
-                        "[执行成功] candidate='{}' (id={}), action='{}' (fallback from '{}')",
-                        exec_ctx.display_name, candidate_id, fallback_action, action_id
+                        "[执行忽略] target='{}', activation failed for '{}', fallback disabled",
+                        exec_ctx.display_name, action_id
                     );
-                } else {
-                    info!(
-                        "[执行忽略] candidate='{}' (id={}), activation failed for '{}', fallback disabled",
-                        exec_ctx.display_name, candidate_id, action_id
-                    );
+                    return Ok(None);
                 }
-                Ok(())
+                let fallback_executor = {
+                    let registry = self.executor_registry.read();
+                    registry
+                        .resolve_fallback(exec_ctx, &fallback_action)
+                        .map_err(|e| ConfirmError(e.to_string()))?
+                };
+                fallback_executor
+                    .execute(exec_ctx, &fallback_action)
+                    .await
+                    .map_err(|e| ConfirmError(e.to_string()))?;
+                Ok(Some(fallback_action))
             }
             Err(e) => Err(ConfirmError(e.to_string())),
         }
+    }
+
+    /// 直接执行一个执行目标，不经会话候选链路。
+    ///
+    /// 用于「目标已持久化、无活动候选缓存」的启动路径（图标面板条目等）：
+    /// 构造执行上下文 → 解析执行器 → 执行（含激活失败回退），与 `execute_candidate`
+    /// 共用 `run_executor`，但不做候选世代校验、不记录搜索行为。
+    /// 参数：target - 待执行目标；display_name - 展示名（日志与远端执行器上下文用）；
+    ///       action_id - 动作 ID（须由该目标类型的执行器支持）；user_args - 用户参数。
+    /// 返回：Ok(()) 或执行错误。
+    pub async fn execute_target(
+        &self,
+        target: ExecutionTarget,
+        display_name: &str,
+        action_id: &str,
+        user_args: &[String],
+    ) -> Result<(), SessionDispatcherError> {
+        let exec_ctx = ExecutionContext {
+            target,
+            display_name: display_name.to_string(),
+            user_args: user_args.to_vec(),
+            parameter_snapshot: self.parameter_snapshot.lock().clone(),
+            locale: self.current_locale(),
+        };
+        let fallback = self
+            .run_executor(&exec_ctx, action_id)
+            .await
+            .map_err(|e| SessionDispatcherError::ExecutionError(e.to_string()))?;
+        match fallback {
+            Some(action) => info!(
+                "[执行成功] target='{}', action='{}' (fallback from '{}')",
+                exec_ctx.display_name, action, action_id
+            ),
+            None => info!(
+                "[执行成功] target='{}', action='{}'",
+                exec_ctx.display_name, action_id
+            ),
+        }
+        Ok(())
     }
 
     // ==================== 会话维护 ====================

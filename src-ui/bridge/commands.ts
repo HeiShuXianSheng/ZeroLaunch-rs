@@ -1,7 +1,7 @@
 import { invoke } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-dialog'
 import { open as shellOpen } from '@tauri-apps/plugin-shell'
-import type { BridgeQueryResponse, ConfirmRequest, ConfirmResponse, ComponentInfo, ComponentSchema, ConfigActionDef, ConfigActionPayload, QueryPayload, SearchTimingResult, IndexTimingResult, SearchDetailItem, PluginTranslationCatalog } from './contract'
+import type { BridgeQueryResponse, ConfirmRequest, ConfirmResponse, ComponentInfo, ComponentSchema, ConfigActionDef, ConfigActionPayload, QueryPayload, SearchTimingResult, IndexTimingResult, SearchDetailItem, PluginTranslationCatalog, PanelIconsResponse, PanelLaunchAction } from './contract'
 export interface BridgeError {
   code: string
   message: string
@@ -86,6 +86,16 @@ export function bridgeHideWindow(): Promise<void> {
 
 
 // ---- 配置管理 ----
+
+/** 批量读取图标面板条目的图标（条目 id → data URL）。 */
+export function panelGetIcons(): Promise<PanelIconsResponse> {
+  return invokeCommand<PanelIconsResponse>('panel_get_icons')
+}
+
+/** 启动一个面板条目；action 缺省为 open。窗口隐藏由调用方先行处理。 */
+export function panelLaunch(entryId: string, action?: PanelLaunchAction): Promise<void> {
+  return invokeCommand<void>('panel_launch', { entryId, action: action ?? null })
+}
 
 export function configGetVersion(): Promise<string> {
   return invokeCommand<string>('config_get_version')

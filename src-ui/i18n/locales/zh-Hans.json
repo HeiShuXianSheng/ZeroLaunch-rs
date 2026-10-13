@@ -1371,5 +1371,9 @@
   },
   "pluginSettings": {
     "loadError": "设置面板加载失败: {message}"
+  },
+  "iconPanel": {
+    "noTabs": "去设置 → 图标面板 创建第一个分类",
+    "emptyTab": "这里是空的，拖个程序进来或去设置里添加"
   }
 }
